@@ -81,6 +81,8 @@ class Player:
             return Grid.SOUTH
         elif direction == Grid.SOUTH:
             return Grid.NORTH
+        else:
+            raise ValueError("Invalid Parameter")
 
     def move(self, direction:Tuple[int,int]) -> Tuple[int,int]:
         if direction == self._counter_direction(self._direction):
@@ -91,25 +93,20 @@ class Player:
             self._tail.pop()
         #!while
         self._tail.appendleft(self._position)
-        self._position = [self.position[0] + self._direction[0],
-                          self.position[1] + self._direction[1]]
+        self._position = (self.position[0] + self._direction[0],
+                          self.position[1] + self._direction[1])
         return self._position
 
 Box = namedtuple("Box", "shape, dtype, high, low")
-Discrete = namedtuple("Discrete", "dtype, n")
+Discrete = namedtuple("Discrete", "dtype, n, vals")
 
 class Tron:
     def __init__(self):
         self._grid = Grid(width=20)
-        self._env_observation_space = Box(shape=(2, self._grid, self._grid), dtype=np.int32, high=2, low=0)
-        self._action_space = Discrete(dtype=np.int32, n=4)
-        player0 = Player()
-        player0.name = 'SAM'
-        player0.color = FLYNN_COLOR
-        player1 = Player((self._grid.width, self._grid.width), Grid.WEST)
-        player1.name = 'CLU'
-        player1.color = CLU_COLOR
-        self._players = [player0, player1]
+        self._env_observation_space = Box(shape=(2, self._grid.width, self._grid.width), 
+                                          dtype=np.int32, high=2, low=0)
+        self._action_space = Discrete(dtype=np.int32, n=4, vals=[Grid.WEST, Grid.EAST, Grid.SOUTH, Grid.NORTH])
+        self._done = True
 
     @property
     def env_observation_space(self) -> Box:
@@ -119,7 +116,12 @@ class Tron:
     def action_space(self) -> Discrete:
         return self._action_space
 
+    @property
+    def done(self) -> bool:
+        return self._done
+
     def reset(self):
+        self._done = False
         self._grid.clear()
         player0 = Player()
         player0.name = 'SAM'
@@ -143,6 +145,8 @@ class Tron:
         return states
 
     def step(self, action0, action1):
+        if self._done:
+            raise RuntimeError("Enviroment is done!")
         self._players[0].move(action0)
         self._players[1].move(action1)
 
@@ -154,26 +158,107 @@ class Tron:
             else:
                 return False
 
-        self._grid.clear()
-        self._grid.add_player(self._players[0])
-        self._grid.add_player(self._players[1])
 
         p1 = self._players[0].position
         p2 = self._players[1].position
+
         crash0 = False
         crash1 = False
-        if self._grid[p1] > 2 or out(p1):
+        if out(p1):
             crash0 = True
-        if self._grid[p2] > 2 or out(p2):
+        if out(p2):
+            crash1 = True
+
+        self._grid.clear()
+        if not crash0:
+            self._grid.add_player(self._players[0])
+        if not crash1:
+            self._grid.add_player(self._players[1])
+
+        if not crash0 and self._grid[p1] > 2:
+            crash0 = True
+        if not crash1 and self._grid[p2] > 2:
             crash1 = True
 
         reward0 = -1 if crash0 else 1
         reward1 = -1 if crash1 else 1
 
-        done = crash0 or crash1
-        if done:
+        self._done = crash0 or crash1
+        if self._done:
             return [None,None], [reward0, reward1], True
         else:
             states = self.current_state()
             return states, [reward0, reward1], False
 
+class ConsoleRender:
+    CEND      = '\33[0m'
+    CBOLD     = '\33[1m'
+    CITALIC   = '\33[3m'
+    CURL      = '\33[4m'
+    CBLINK    = '\33[5m'
+    CBLINK2   = '\33[6m'
+    CSELECTED = '\33[7m'
+
+    CBLACK  = '\33[30m'
+    CRED    = '\33[31m'
+    CGREEN  = '\33[32m'
+    CYELLOW = '\33[33m'
+    CBLUE   = '\33[34m'
+    CVIOLET = '\33[35m'
+    CBEIGE  = '\33[36m'
+    CWHITE  = '\33[37m'
+
+    CBLACKBG  = '\33[40m'
+    CREDBG    = '\33[41m'
+    CGREENBG  = '\33[42m'
+    CYELLOWBG = '\33[43m'
+    CBLUEBG   = '\33[44m'
+    CVIOLETBG = '\33[45m'
+    CBEIGEBG  = '\33[46m'
+    CWHITEBG  = '\33[47m'
+
+    CGREY    = '\33[90m'
+    CRED2    = '\33[91m'
+    CGREEN2  = '\33[92m'
+    CYELLOW2 = '\33[93m'
+    CBLUE2   = '\33[94m'
+    CVIOLET2 = '\33[95m'
+    CBEIGE2  = '\33[96m'
+    CWHITE2  = '\33[97m'
+
+    CGREYBG    = '\33[100m'
+    CREDBG2    = '\33[101m'
+    CGREENBG2  = '\33[102m'
+    CYELLOWBG2 = '\33[103m'
+    CBLUEBG2   = '\33[104m'
+    CVIOLETBG2 = '\33[105m'
+    CBEIGEBG2  = '\33[106m'
+    CWHITEBG2  = '\33[107m'
+
+    def __init__(self):
+        pass
+
+    def render(self, env:Tron):
+        if env.done:
+            return
+        canvas_width = env._grid.width + 1
+        grid = [[' '.join([self.CGREYBG,self.CEND])] * canvas_width for _ in range(canvas_width)]
+        for i,p in enumerate(env._players):
+            if 0 == i:
+                head = '2'.join([self.CBLUEBG,self.CEND])
+                tail = '1'.join([self.CBLUEBG,self.CEND])
+            elif 1 == i:
+                head = '2'.join([self.CYELLOWBG,self.CEND])
+                tail = '1'.join([self.CYELLOWBG,self.CEND])
+            else:
+                raise RuntimeError("Impossible to have three players!")
+            x, y = p.position
+            grid[y][x] = head
+            for t in p.tail:
+                x, y = t
+                grid[y][x] = tail
+            #!for
+        #!for
+        # lets print it
+        for row in grid:
+            print(''.join(row))
