@@ -103,14 +103,14 @@ Discrete = namedtuple("Discrete", "dtype, n, vals")
 class Tron:
     def __init__(self):
         self._grid = Grid(width=20)
-        self._env_observation_space = Box(shape=(2, self._grid.width, self._grid.width), 
+        self._observation_space = Box(shape=(2, (self._grid.width+1)*2, self._grid.width+1), 
                                           dtype=np.int32, high=2, low=0)
         self._action_space = Discrete(dtype=np.int32, n=4, vals=[Grid.WEST, Grid.EAST, Grid.SOUTH, Grid.NORTH])
         self._done = True
 
     @property
-    def env_observation_space(self) -> Box:
-        return self._env_observation_space
+    def observation_space(self) -> Box:
+        return self._observation_space
     
     @property
     def action_space(self) -> Discrete:
@@ -142,13 +142,26 @@ class Tron:
             state = np.vstack([op_grid._vertices, my_grid._vertices])
             states.append(state)
         #!for
-        return states
+        return np.array(states)
 
     def step(self, action0, action1):
         if self._done:
             raise RuntimeError("Enviroment is done!")
-        self._players[0].move(action0)
-        self._players[1].move(action1)
+        
+        def action_direction(act):
+            if act == 0:
+                return Grid.WEST
+            elif act == 1:
+                return Grid.NORTH
+            elif act == 2:
+                return Grid.EAST
+            elif act == 3:
+                return Grid.SOUTH
+            else:
+                raise ValueError("NO SUCH OPTION")
+
+        self._players[0].move(action_direction(action0))
+        self._players[1].move(action_direction(action1))
 
         def out(position) -> bool:         
             if position[0] < 0 or position[0] > self._grid.width:
@@ -185,7 +198,7 @@ class Tron:
 
         self._done = crash0 or crash1
         if self._done:
-            return [None,None], [reward0, reward1], True
+            return None, [reward0, reward1], True
         else:
             states = self.current_state()
             return states, [reward0, reward1], False
